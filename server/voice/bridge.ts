@@ -81,6 +81,22 @@ function openOpenAI(
     }
   );
 
+  // Track whether the current response included any audio output
+  let audioSentInResponse = false;
+  let clearSpeakingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function scheduleMicReopen() {
+    // Wait for audio to finish playing on the phone + echo tail to die down,
+    // then flush any buffered echo and re-open the mic.
+    clearSpeakingTimer = setTimeout(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+      }
+      setSpeaking(false);
+      console.log("[bridge] mic re-opened after echo guard");
+    }, 1500);
+  }
+
   ws.on("open", () => {
     console.log("[bridge] openai ws opened");
     const session = getSession();
@@ -136,11 +152,15 @@ function openOpenAI(
       }
 
       if (evt.type === "response.created") {
+        // Cancel any pending mic-reopen so we don't re-enable while AI is already speaking again
+        if (clearSpeakingTimer) { clearTimeout(clearSpeakingTimer); clearSpeakingTimer = null; }
+        audioSentInResponse = false;
         setSpeaking(true);
         return;
       }
 
       if (evt.type === "response.audio.delta" && evt.delta) {
+        audioSentInResponse = true;
         const streamSid = getStreamSid();
         if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
           twilioWs.send(JSON.stringify({
@@ -149,6 +169,12 @@ function openOpenAI(
             media: { payload: evt.delta },
           }));
         }
+        return;
+      }
+
+      // All audio chunks have been sent to Twilio — schedule mic re-open after echo guard delay
+      if (evt.type === "response.audio.done") {
+        scheduleMicReopen();
         return;
       }
 
@@ -163,7 +189,11 @@ function openOpenAI(
       }
 
       if (evt.type === "response.done") {
-        setSpeaking(false);
+        // If no audio was sent (pure function call response), re-enable mic immediately
+        if (!audioSentInResponse) {
+          setSpeaking(false);
+        }
+
         for (const item of (evt.response?.output as any[]) || []) {
           if (item.type !== "function_call") continue;
 
