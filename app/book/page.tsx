@@ -441,7 +441,6 @@ export default function HomePage() {
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-xs text-zinc-600">Try an example</p>
           <div className="flex flex-wrap gap-2">
             {EXAMPLE_PROMPTS.map((ex) => (
               <button
