@@ -25,6 +25,7 @@ Rules:
 - If the user says no, cancel, or anything negative → call finalize_after_call with action="cancel".
 - If the user seems confused, repeat the key info once more simply, then ask again.
 - Do not replan or suggest alternatives. The text agent already chose the best option.
+- IMPORTANT: Only call finalize_after_call when the user gives a clear, direct answer — "yes", "go ahead", "proceed", "cancel", "no". Do not act on "thank you", "okay", "sure" alone, or anything ambiguous. If unclear, ask again.
 - The current runId is: ${runId}
 `.trim();
 }
@@ -92,7 +93,12 @@ function openOpenAI(
         input_audio_format: "g711_ulaw",
         output_audio_format: "g711_ulaw",
         input_audio_transcription: { model: "whisper-1" },
-        turn_detection: { type: "server_vad" },
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.7,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 800,
+        },
         tools: TOOLS,
         tool_choice: "auto",
       },
