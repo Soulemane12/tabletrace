@@ -267,6 +267,34 @@ function Chip({
   );
 }
 
+const EXAMPLE_PROMPTS = [
+  {
+    label: "Phone only",
+    dot: "bg-sky-400",
+    text: "Book Mercer House for 4 people this Saturday at 8pm in SoHo",
+  },
+  {
+    label: "Auto-confirmed",
+    dot: "bg-emerald-400",
+    text: "Italian dinner in SoHo for 4 people this Saturday at 7:30pm, budget $70 per person, outdoor seating preferred",
+  },
+  {
+    label: "No match",
+    dot: "bg-zinc-400",
+    text: "Book a French restaurant in SoHo for 4 people this Saturday at 8pm under $80",
+  },
+  {
+    label: "Budget blocked",
+    dot: "bg-orange-400",
+    text: "Book dinner in SoHo for 4 people this Saturday at 8pm, max $35 per person",
+  },
+  {
+    label: "Needs clarification",
+    dot: "bg-amber-400",
+    text: "Book something nice for dinner tonight",
+  },
+];
+
 export default function HomePage() {
   const [message, setMessage] = useState("");
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -409,6 +437,23 @@ export default function HomePage() {
                 {loading ? "Running…" : "Run agent"}
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-xs text-zinc-600">Try an example</p>
+          <div className="flex flex-wrap gap-2">
+            {EXAMPLE_PROMPTS.map((ex) => (
+              <button
+                key={ex.label}
+                onClick={() => setMessage(ex.text)}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 border border-zinc-800 hover:border-zinc-600 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-40"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${ex.dot}`} />
+                {ex.label}
+              </button>
+            ))}
           </div>
         </div>
 
