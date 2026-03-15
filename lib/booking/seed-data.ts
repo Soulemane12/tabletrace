@@ -1,6 +1,7 @@
 import type { AppState } from "@/lib/storage/types";
 
 export function seedAppState(): AppState {
+  const today = new Date().toISOString().slice(0, 10);
   return {
     restaurants: [
       {
@@ -41,10 +42,10 @@ export function seedAppState(): AppState {
       },
     ],
     slots: [
-      { id: "s1", restaurantId: "r1", date: "2026-03-15", time: "19:30", partySize: 4, available: true },
-      { id: "s2", restaurantId: "r1", date: "2026-03-15", time: "20:30", partySize: 4, available: true },
-      { id: "s3", restaurantId: "r2", date: "2026-03-15", time: "19:00", partySize: 4, available: true },
-      { id: "s4", restaurantId: "r3", date: "2026-03-15", time: "20:00", partySize: 4, available: true },
+      { id: "s1", restaurantId: "r1", date: today, time: "19:30", partySize: 4, available: true },
+      { id: "s2", restaurantId: "r1", date: today, time: "20:30", partySize: 4, available: true },
+      { id: "s3", restaurantId: "r2", date: today, time: "19:00", partySize: 4, available: true },
+      { id: "s4", restaurantId: "r3", date: today, time: "20:00", partySize: 4, available: true },
     ],
     runs: [],
   };
