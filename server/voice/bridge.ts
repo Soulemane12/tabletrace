@@ -68,7 +68,8 @@ function openOpenAI(
   runId: string,
   twilioWs: WebSocket,
   getStreamSid: () => string,
-  getSession: () => ReturnType<typeof sessions.get>
+  getSession: () => ReturnType<typeof sessions.get>,
+  setSpeaking: (speaking: boolean) => void
 ): WebSocket {
   const ws = new WebSocket(
     `wss://api.openai.com/v1/realtime?model=${OPENAI_REALTIME_MODEL}`,
@@ -93,12 +94,7 @@ function openOpenAI(
         input_audio_format: "g711_ulaw",
         output_audio_format: "g711_ulaw",
         input_audio_transcription: { model: "whisper-1" },
-        turn_detection: {
-          type: "server_vad",
-          threshold: 0.7,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 800,
-        },
+        turn_detection: { type: "server_vad" },
         tools: TOOLS,
         tool_choice: "auto",
       },
@@ -129,6 +125,21 @@ function openOpenAI(
     try {
       const evt = JSON.parse(raw.toString()) as any;
 
+      if (evt.type === "error") {
+        console.error("[openai] error:", JSON.stringify(evt.error));
+        return;
+      }
+
+      if (evt.type === "session.updated") {
+        console.log("[openai] session ready");
+        return;
+      }
+
+      if (evt.type === "response.created") {
+        setSpeaking(true);
+        return;
+      }
+
       if (evt.type === "response.audio.delta" && evt.delta) {
         const streamSid = getStreamSid();
         if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
@@ -152,6 +163,7 @@ function openOpenAI(
       }
 
       if (evt.type === "response.done") {
+        setSpeaking(false);
         for (const item of (evt.response?.output as any[]) || []) {
           if (item.type !== "function_call") continue;
 
@@ -211,6 +223,7 @@ export function attachBridge(server: http.Server) {
     let runId = "";
     let streamSid = "";
     let openaiWs: WebSocket | null = null;
+    let aiSpeaking = false;  // gate: don't send audio while AI is talking
 
     twilioWs.on("message", async (raw) => {
       try {
@@ -218,7 +231,6 @@ export function attachBridge(server: http.Server) {
 
         if (msg.event === "start") {
           streamSid = msg.start.streamSid;
-          // runId comes from the custom parameter set in TwiML
           runId = msg.start.customParameters?.runId || "";
           console.log("[bridge] start event, streamSid:", streamSid, "runId:", runId);
 
@@ -236,13 +248,15 @@ export function attachBridge(server: http.Server) {
             runId,
             twilioWs,
             () => streamSid,
-            () => sessions.get(runId)
+            () => sessions.get(runId),
+            (speaking: boolean) => { aiSpeaking = speaking; }
           );
           return;
         }
 
         if (msg.event === "media") {
-          if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+          // Drop audio while AI is speaking — prevents echo being heard as user input
+          if (!aiSpeaking && openaiWs && openaiWs.readyState === WebSocket.OPEN) {
             openaiWs.send(JSON.stringify({
               type: "input_audio_buffer.append",
               audio: msg.media.payload,
