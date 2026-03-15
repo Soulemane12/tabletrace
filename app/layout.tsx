@@ -39,7 +39,7 @@ export default function RootLayout({
           </div>
           <div className="flex items-center gap-0.5">
             <Link
-              href="/"
+              href="/book"
               className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-100 rounded-md hover:bg-zinc-800 transition-colors"
             >
               Book

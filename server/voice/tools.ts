@@ -39,6 +39,11 @@ export async function appendTranscript(
   text: string
 ) {
   const session = sessions.get(runId);
-  if (!session || !text?.trim()) return;
-  session.transcript.push({ speaker, text, at: new Date().toISOString() });
+  if (!session || !text) return;
+  const last = session.transcript[session.transcript.length - 1];
+  if (last && last.speaker === speaker) {
+    last.text += text;
+  } else {
+    session.transcript.push({ speaker, text, at: new Date().toISOString() });
+  }
 }

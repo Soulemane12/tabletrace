@@ -35,35 +35,31 @@ export function attachTwilioRoutes(app: express.Express) {
   // Twilio sends form-encoded params to voice webhooks
   app.use("/twilio/voice", express.urlencoded({ extended: false }));
 
+  // Webhook sanity check — hit this first before testing the full bridge
+  app.post("/twilio/test", (req, res) => {
+    res.type("text/xml").send(`<Response><Say>Hello. Your Twilio webhook works.</Say></Response>`);
+  });
+
   // Twilio calls this URL when the outbound call is answered
   app.post("/twilio/voice", (req, res) => {
-    const signature = (req.header("X-Twilio-Signature") ?? req.header("x-twilio-signature")) || "";
-    const fullUrl = `${process.env.PUBLIC_HTTP_BASE}${req.originalUrl}`;
-
-    const valid = twilio.validateRequest(
-      process.env.TWILIO_AUTH_TOKEN!,
-      signature,
-      fullUrl,
-      req.body as Record<string, string>
-    );
-
-    if (!valid) {
-      res.status(403).send("invalid signature");
-      return;
-    }
-
     const runId = String(req.query.runId ?? "");
+    console.log("[twilio/voice] runId:", runId, "known:", sessions.has(runId));
+
     if (!sessions.has(runId)) {
-      res.status(404).send("unknown run");
+      // Still say something so the call doesn't just drop silently
+      const twiml = new twilio.twiml.VoiceResponse();
+      twiml.say("Session not found. Please try again.");
+      res.type("text/xml").send(twiml.toString());
       return;
     }
 
     const twiml = new twilio.twiml.VoiceResponse();
+    twiml.say("Connecting you now.");
     const connect = twiml.connect();
-
-    connect.stream({
-      url: `${process.env.PUBLIC_WS_BASE}/twilio-media?runId=${encodeURIComponent(runId)}`,
+    const stream = connect.stream({
+      url: `${process.env.PUBLIC_WS_BASE}/twilio-media`,
     });
+    stream.parameter({ name: "runId", value: runId });
 
     res.type("text/xml").send(twiml.toString());
   });

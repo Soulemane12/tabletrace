@@ -1,488 +1,184 @@
-"use client";
-
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { AgentRun } from "@/lib/storage/types";
-import { loadState, saveState, resetState } from "@/lib/storage/store";
 
-const VOICE_BASE = process.env.NEXT_PUBLIC_VOICE_SERVER_BASE ?? "http://localhost:8787";
-
-const OUTCOME_META: Record<string, { label: string; classes: string; dot: string }> = {
-  confirmed:               { label: "Confirmed",           classes: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-400" },
-  clarification_required:  { label: "Clarification needed", classes: "bg-amber-500/10 text-amber-400 border-amber-500/20",    dot: "bg-amber-400" },
-  phone_only:              { label: "Phone only",           classes: "bg-sky-500/10 text-sky-400 border-sky-500/20",           dot: "bg-sky-400" },
-  unavailable:             { label: "Unavailable",          classes: "bg-red-500/10 text-red-400 border-red-500/20",           dot: "bg-red-400" },
-  policy_blocked:          { label: "Policy blocked",       classes: "bg-orange-500/10 text-orange-400 border-orange-500/20",  dot: "bg-orange-400" },
-  needs_user_confirmation: { label: "Needs confirmation",   classes: "bg-violet-500/10 text-violet-400 border-violet-500/20", dot: "bg-violet-400" },
-  failed_gracefully:       { label: "Failed",               classes: "bg-zinc-500/10 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
-};
-
-type CallState = {
-  status: string;
-  transcript: Array<{ speaker: "user" | "assistant" | "system"; text: string; at: string }>;
-  postCallOutcome?: any;
-};
-
-function OutcomeBadge({ outcome }: { outcome: string }) {
-  const meta = OUTCOME_META[outcome] ?? { label: outcome, classes: "bg-zinc-500/10 text-zinc-400 border-zinc-700", dot: "bg-zinc-500" };
+export default function LandingPage() {
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${meta.classes}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-      {meta.label}
-    </span>
-  );
-}
+    <div className="min-h-screen bg-zinc-950">
 
-function getBookingAttemptCandidate(run: AgentRun) {
-  const step = run.steps.find((s) => s.type === "attempt_booking");
-  if (!step || !step.input || typeof step.input !== "object") return null;
-  return step.input as { name?: string; cuisine?: string; avgPricePerPerson?: number };
-}
-
-function CallMePanel({
-  run,
-  callState,
-  onCallMe,
-}: {
-  run: AgentRun;
-  callState: CallState | null;
-  onCallMe: (phoneNumber: string) => void;
-}) {
-  const [phone, setPhone] = useState("");
-  const [calling, setCalling] = useState(false);
-
-  const status = callState?.status;
-  const isActive = status === "calling_user" || status === "in_progress";
-  const isDone =
-    status === "completed_after_call" ||
-    status === "call_failed" ||
-    status === "user_cancelled";
-
-  async function handleCall() {
-    if (!phone.trim() || calling) return;
-    setCalling(true);
-    try {
-      await onCallMe(phone.trim());
-    } finally {
-      setCalling(false);
-    }
-  }
-
-  const callStatusLabel: Record<string, string> = {
-    calling_user:         "Calling you…",
-    in_progress:          "Call in progress",
-    completed_after_call: "Call completed",
-    call_failed:          "Call failed",
-    user_cancelled:       "Cancelled",
-  };
-
-  return (
-    <div className="bg-zinc-900 border border-sky-500/20 rounded-xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-zinc-800 flex items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-        <span className="text-xs font-medium text-sky-400">Phone handoff</span>
-        {status && statusLabel(status) && (
-          <span className="ml-auto text-xs text-zinc-500">{callStatusLabel[status]}</span>
-        )}
-      </div>
-
-      <div className="p-5 space-y-4">
-        {!status || status === "not_started" ? (
-          <>
-            <p className="text-sm text-zinc-400">
-              The text agent identified the best option but cannot complete this booking automatically.
-              Enter your number and we'll call you to confirm.
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+1 555 000 0000"
-                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-sky-500/50"
-              />
-              <button
-                onClick={handleCall}
-                disabled={!phone.trim() || calling}
-                className="px-4 py-2 text-xs font-medium bg-sky-500 hover:bg-sky-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors"
-              >
-                {calling ? "Starting…" : "Call me"}
-              </button>
-            </div>
-          </>
-        ) : isActive ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-              <span className="text-sm text-zinc-300">{callStatusLabel[status]}</span>
-            </div>
-            {callState?.transcript && callState.transcript.length > 0 && (
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {callState.transcript.map((entry, i) => (
-                  <div key={i} className={`text-xs ${entry.speaker === "user" ? "text-zinc-300" : "text-sky-400/80"}`}>
-                    <span className="text-zinc-600 mr-1.5">{entry.speaker === "user" ? "You" : "AI"}:</span>
-                    {entry.text}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : isDone ? (
-          <div className="space-y-3">
-            <div className={`text-sm font-medium ${
-              status === "completed_after_call" ? "text-emerald-400" :
-              status === "user_cancelled" ? "text-amber-400" : "text-red-400"
-            }`}>
-              {callStatusLabel[status]}
-              {callState?.postCallOutcome?.outcome === "completed_after_call" &&
-                " — user confirmed the candidate."}
-              {callState?.postCallOutcome?.outcome === "user_cancelled" &&
-                " — user cancelled the booking."}
-            </div>
-            {callState?.transcript && callState.transcript.length > 0 && (
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {callState.transcript.map((entry, i) => (
-                  <div key={i} className={`text-xs ${entry.speaker === "user" ? "text-zinc-300" : "text-sky-400/80"}`}>
-                    <span className="text-zinc-600 mr-1.5">{entry.speaker === "user" ? "You" : "AI"}:</span>
-                    {entry.text}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function statusLabel(s: string) {
-  return ["calling_user", "in_progress", "completed_after_call", "call_failed", "user_cancelled"].includes(s);
-}
-
-function ResultCard({ run }: { run: AgentRun }) {
-  const outcome = run.finalOutcome;
-  if (!outcome) return null;
-
-  const candidate = getBookingAttemptCandidate(run);
-
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
-        <OutcomeBadge outcome={outcome.outcome} />
-        <Link
-          href="/dashboard"
-          className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          View full run →
-        </Link>
-      </div>
-
-      <div className="p-5 space-y-4">
-        {outcome.outcome === "confirmed" && (
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-              <div className="text-xs text-zinc-500 mb-1">Restaurant</div>
-              <div className="text-sm font-medium text-zinc-100">{candidate?.name ?? outcome.restaurantId}</div>
-            </div>
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-              <div className="text-xs text-zinc-500 mb-1">Time</div>
-              <div className="text-sm font-medium text-zinc-100">{outcome.time}</div>
-            </div>
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-              <div className="text-xs text-zinc-500 mb-1">Confirmation</div>
-              <div className="text-sm font-mono font-semibold text-emerald-400">{outcome.confirmationCode}</div>
-            </div>
-          </div>
-        )}
-
-        {("reason" in outcome) && (
-          <p className="text-sm text-zinc-400">{outcome.reason}</p>
-        )}
-
-        {run.parsedRequest && (
-          <div className="space-y-2">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider">Parsed request</div>
-            <div className="flex flex-wrap gap-1.5">
-              <Chip label={`${run.parsedRequest.partySize} guests`} />
-              <Chip label={run.parsedRequest.neighborhood || "no neighborhood"} dim={!run.parsedRequest.neighborhood} />
-              <Chip label={`$${run.parsedRequest.maxPricePerPerson}/person`} />
-              <Chip label={`after ${run.parsedRequest.timeWindowStart}`} />
-              {run.parsedRequest.requiredFeatures.map((f) => <Chip key={f} label={f} accent />)}
-              {run.parsedRequest.excludedCuisines.map((c) => <Chip key={c} label={`no ${c}`} warn />)}
-              {run.parsedRequest.ambiguityFlags.map((f) => <Chip key={f} label={`⚠ ${f}`} warn />)}
-            </div>
-          </div>
-        )}
-
-        {run.evaluation && (
-          outcome.outcome === "confirmed" ? (
-            <div className="flex items-center gap-3 pt-1">
-              <div className="text-xs text-zinc-500">Score</div>
-              <div className={`text-sm font-mono font-semibold ${run.evaluation.overallScore >= 80 ? "text-emerald-400" : run.evaluation.overallScore >= 60 ? "text-amber-400" : "text-red-400"}`}>
-                {run.evaluation.overallScore}
-              </div>
-              <div className="flex-1 h-1 rounded-full bg-zinc-800">
-                <div
-                  className={`h-1 rounded-full ${run.evaluation.overallScore >= 80 ? "bg-emerald-500" : run.evaluation.overallScore >= 60 ? "bg-amber-500" : "bg-red-500"}`}
-                  style={{ width: `${run.evaluation.overallScore}%` }}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-4 pt-1">
-              <div className="flex items-center gap-2">
-                <div className="text-xs text-zinc-500">Safety</div>
-                <div className={`text-sm font-mono font-semibold ${(run.evaluation.safetyScore ?? run.evaluation.overallScore) >= 80 ? "text-emerald-400" : (run.evaluation.safetyScore ?? run.evaluation.overallScore) >= 60 ? "text-amber-400" : "text-red-400"}`}>
-                  {run.evaluation.safetyScore ?? run.evaluation.overallScore}
-                </div>
-              </div>
-              <div className="w-px h-3 bg-zinc-800" />
-              <div className="flex items-center gap-2">
-                <div className="text-xs text-zinc-500">Fulfillment</div>
-                <div className={`text-sm font-mono font-semibold ${(run.evaluation.fulfillmentScore ?? run.evaluation.overallScore) >= 80 ? "text-emerald-400" : (run.evaluation.fulfillmentScore ?? run.evaluation.overallScore) >= 60 ? "text-amber-400" : "text-red-400"}`}>
-                  {run.evaluation.fulfillmentScore ?? run.evaluation.overallScore}
-                </div>
-              </div>
-            </div>
-          )
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Chip({
-  label,
-  accent,
-  warn,
-  dim,
-}: {
-  label: string;
-  accent?: boolean;
-  warn?: boolean;
-  dim?: boolean;
-}) {
-  const classes = accent
-    ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-    : warn
-    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-    : dim
-    ? "bg-zinc-800/50 text-zinc-600 border-zinc-800"
-    : "bg-zinc-800/50 text-zinc-300 border-zinc-700/50";
-  return (
-    <span className={`px-2 py-0.5 rounded-md text-xs border font-medium ${classes}`}>
-      {label}
-    </span>
-  );
-}
-
-export default function HomePage() {
-  const [message, setMessage] = useState("");
-  const [runs, setRuns] = useState<AgentRun[]>([]);
-  const [latestRun, setLatestRun] = useState<AgentRun | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [callState, setCallState] = useState<CallState | null>(null);
-  const activeCallRunId = useRef<string | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-    const state = loadState();
-    setRuns(state.runs);
-  }, []);
-
-  // Poll voice server while a call is active
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const runId = activeCallRunId.current;
-      if (!runId) return;
-
-      try {
-        const res = await fetch(`${VOICE_BASE}/session/${runId}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setCallState({ status: data.callStatus, transcript: data.transcript, postCallOutcome: data.postCallOutcome });
-
-        if (["completed_after_call", "call_failed", "user_cancelled"].includes(data.callStatus)) {
-          activeCallRunId.current = null;
-        }
-      } catch {
-        // voice server may not be running; ignore
-      }
-    }, 1500);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  if (!mounted) return null;
-
-  async function handleSend() {
-    if (!message.trim() || loading) return;
-    setLoading(true);
-    setCallState(null);
-    activeCallRunId.current = null;
-
-    const state = loadState();
-
-    try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, state }),
-      });
-
-      const data = await res.json();
-
-      saveState(data.nextState);
-      setRuns(data.nextState.runs);
-      setLatestRun(data.run);
-      setMessage("");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleCallMe(phoneNumber: string) {
-    if (!latestRun) return;
-
-    // Register run snapshot on voice server
-    await fetch(`${VOICE_BASE}/register-run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        runId: latestRun.id,
-        run: latestRun,
-        userPhoneNumber: phoneNumber,
-      }),
-    });
-
-    // Start the outbound call
-    await fetch(`${VOICE_BASE}/start-call`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ runId: latestRun.id }),
-    });
-
-    setCallState({ status: "calling_user", transcript: [] });
-    activeCallRunId.current = latestRun.id;
-  }
-
-  function handleReset() {
-    const state = resetState();
-    setRuns(state.runs);
-    setLatestRun(null);
-    setCallState(null);
-    activeCallRunId.current = null;
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend();
-  }
-
-  const showCallPanel =
-    latestRun?.finalOutcome?.outcome === "phone_only" ||
-    latestRun?.finalOutcome?.outcome === "needs_user_confirmation";
-
-  return (
-    <main className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <section className="lg:col-span-2 space-y-4">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-100">Book a table</h1>
-          <p className="text-sm text-zinc-500 mt-0.5">Describe what you want in plain English.</p>
+      {/* Hero */}
+      <section className="max-w-5xl mx-auto px-6 pt-24 pb-20 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium mb-8">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+          Hospitality × Alignment
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-          <textarea
-            className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-zinc-100 placeholder-zinc-600 resize-none outline-none min-h-28 disabled:opacity-50"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={loading}
-            placeholder="Book dinner for 4 tonight in SoHo after 7 PM, under $70 each, outdoor if possible, no sushi."
-          />
-          <div className="px-4 pb-3 flex items-center justify-between">
-            <span className="text-xs text-zinc-600">{loading ? "Running agent…" : "⌘ + Enter to run"}</span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleReset}
-                disabled={loading}
-                className="px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-300 rounded-md hover:bg-zinc-800 transition-colors disabled:opacity-40"
-              >
-                Reset data
-              </button>
-              <button
-                onClick={handleSend}
-                disabled={!message.trim() || loading}
-                className="px-4 py-1.5 text-xs font-medium bg-indigo-500 hover:bg-indigo-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-md transition-colors"
-              >
-                {loading ? "Running…" : "Run agent"}
-              </button>
-            </div>
-          </div>
+        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight text-zinc-100 leading-tight mb-6">
+          A booking agent that
+          <br />
+          <span className="text-indigo-400">knows what it can't do.</span>
+        </h1>
+
+        <p className="text-lg text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+          TableTrace parses your dinner request, filters restaurants against hard constraints, ranks by preference, and either confirms the booking or hands off cleanly — with a full safety and fulfillment scorecard on every run.
+        </p>
+
+        <div className="flex items-center justify-center gap-3">
+          <Link
+            href="/book"
+            className="px-6 py-3 bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            Try the agent
+          </Link>
+          <Link
+            href="/dashboard"
+            className="px-6 py-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
+          >
+            View dashboard
+          </Link>
         </div>
-
-        {latestRun && <ResultCard run={latestRun} />}
-
-        {latestRun && showCallPanel && (
-          <CallMePanel
-            run={latestRun}
-            callState={callState}
-            onCallMe={handleCallMe}
-          />
-        )}
       </section>
 
-      <aside className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-zinc-400">Run history</h2>
-          <span className="text-xs text-zinc-600">{runs.length} runs</span>
+      {/* How it works */}
+      <section className="max-w-5xl mx-auto px-6 pb-20">
+        <div className="text-center mb-12">
+          <h2 className="text-2xl font-semibold text-zinc-100 mb-3">How it works</h2>
+          <p className="text-sm text-zinc-500">Seven deterministic steps. No hallucinated confirmations.</p>
         </div>
 
-        {runs.length === 0 ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center">
-            <p className="text-sm text-zinc-600">No runs yet.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {runs.map((run) => {
-              const meta = run.finalOutcome
-                ? (OUTCOME_META[run.finalOutcome.outcome] ?? OUTCOME_META.failed_gracefully)
-                : null;
-              return (
-                <button
-                  key={run.id}
-                  onClick={() => { setLatestRun(run); setCallState(null); activeCallRunId.current = null; }}
-                  className="w-full text-left bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-3.5 space-y-2 transition-colors group"
-                >
-                  <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed group-hover:text-zinc-100 transition-colors">
-                    {run.rawInput}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    {meta && (
-                      <span className={`inline-flex items-center gap-1 text-xs ${meta.classes.split(" ").filter(c => c.startsWith("text-")).join(" ")}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                        {meta.label}
-                      </span>
-                    )}
-                    {run.evaluation && (
-                      run.finalOutcome?.outcome === "confirmed" ? (
-                        <span className={`text-xs font-mono font-semibold ${run.evaluation.overallScore >= 80 ? "text-emerald-400" : run.evaluation.overallScore >= 60 ? "text-amber-400" : "text-red-400"}`}>
-                          {run.evaluation.overallScore}
-                        </span>
-                      ) : (
-                        <span className="text-xs font-mono text-zinc-500">
-                          S{run.evaluation.safetyScore ?? run.evaluation.overallScore} / F{run.evaluation.fulfillmentScore ?? run.evaluation.overallScore}
-                        </span>
-                      )
-                    )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { step: "01", title: "Parse", desc: "Natural language → structured request. Hard constraints separated from soft preferences at parse time.", dot: "bg-indigo-400" },
+            { step: "02", title: "Filter & Rank", desc: "Code filters on hard constraints. AI never sees candidates that violate policy.", dot: "bg-sky-400" },
+            { step: "03", title: "Choose", desc: "AI picks from valid candidates only, with rationale grounded in raw restaurant fields.", dot: "bg-violet-400" },
+            { step: "04", title: "Validate", desc: "Code re-checks the AI's choice before any booking attempt. Policy blocked here, not after.", dot: "bg-emerald-400" },
+          ].map(({ step, title, desc, dot }) => (
+            <div key={step} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${dot}`} />
+                <span className="text-xs text-zinc-600 font-mono">{step}</span>
+              </div>
+              <div className="text-sm font-semibold text-zinc-100">{title}</div>
+              <div className="text-xs text-zinc-500 leading-relaxed">{desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Outcomes */}
+      <section className="max-w-5xl mx-auto px-6 pb-20">
+        <div className="text-center mb-12">
+          <h2 className="text-2xl font-semibold text-zinc-100 mb-3">Honest outcomes</h2>
+          <p className="text-sm text-zinc-500">The agent never fakes a confirmation. Every terminal state is explicit.</p>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {[
+            { label: "Confirmed",           classes: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-400" },
+            { label: "Phone only",          classes: "bg-sky-500/10 text-sky-400 border-sky-500/20",             dot: "bg-sky-400" },
+            { label: "Needs confirmation",  classes: "bg-violet-500/10 text-violet-400 border-violet-500/20",    dot: "bg-violet-400" },
+            { label: "Clarification needed",classes: "bg-amber-500/10 text-amber-400 border-amber-500/20",       dot: "bg-amber-400" },
+            { label: "Policy blocked",      classes: "bg-orange-500/10 text-orange-400 border-orange-500/20",    dot: "bg-orange-400" },
+            { label: "Unavailable",         classes: "bg-red-500/10 text-red-400 border-red-500/20",             dot: "bg-red-400" },
+          ].map(({ label, classes, dot }) => (
+            <div key={label} className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border justify-center ${classes}`}>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+              {label}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Scorecard */}
+      <section className="max-w-5xl mx-auto px-6 pb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+            <div className="text-sm font-semibold text-zinc-100">Safety score</div>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Did the agent behave correctly? Measures hallucination, reasoning grounding, policy compliance, hard constraint satisfaction, and escalation quality.
+            </p>
+            <div className="space-y-3 pt-1">
+              {[
+                { label: "Hallucination", value: 100 },
+                { label: "Reasoning grounding", value: 85 },
+                { label: "Policy compliance", value: 100 },
+              ].map(({ label, value }) => (
+                <div key={label} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">{label}</span>
+                    <span className="text-emerald-400 font-mono">{value}</span>
                   </div>
-                </button>
-              );
-            })}
+                  <div className="h-1 rounded-full bg-zinc-800">
+                    <div className="h-1 rounded-full bg-emerald-500" style={{ width: `${value}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
-      </aside>
-    </main>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+            <div className="text-sm font-semibold text-zinc-100">Fulfillment score</div>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Did the user get what they asked for? Measures task completion and soft preference satisfaction — separately from whether the agent behaved safely.
+            </p>
+            <div className="space-y-3 pt-1">
+              {[
+                { label: "Task completion", value: 65, color: "bg-amber-500", text: "text-amber-400" },
+                { label: "Soft preferences", value: 0, color: "bg-red-500", text: "text-red-400" },
+              ].map(({ label, value, color, text }) => (
+                <div key={label} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">{label}</span>
+                    <span className={`font-mono ${text}`}>{value}</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-zinc-800">
+                    <div className={`h-1 rounded-full ${color}`} style={{ width: `${value}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="pt-2 border-t border-zinc-800">
+              <p className="text-xs text-zinc-600">
+                Safety 100, Fulfillment 33 — the agent behaved perfectly. The user did not get outdoor seating because no available restaurant had it. That is not a safety failure.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Voice bridge */}
+      <section className="max-w-5xl mx-auto px-6 pb-24">
+        <div className="bg-zinc-900 border border-sky-500/20 rounded-xl p-8">
+          <div className="flex items-start gap-4">
+            <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center shrink-0 mt-0.5">
+              <span className="w-2 h-2 rounded-full bg-sky-400" />
+            </div>
+            <div className="space-y-3 flex-1">
+              <div className="text-sm font-semibold text-zinc-100">Voice handoff bridge</div>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                When the only available option requires phone confirmation, TableTrace doesn't fake a booking or silently fail. It places a real outbound call via Twilio, opens a bidirectional audio stream to OpenAI Realtime, and lets a voice agent explain the situation and confirm the user's decision — all tied to the same run.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {["Twilio outbound call", "Bidirectional Media Stream", "OpenAI Realtime API", "G.711 μ-law audio", "Live transcript", "Run-scoped tools"].map((tag) => (
+                  <span key={tag} className="px-2 py-0.5 rounded-md text-xs bg-zinc-800 text-zinc-400 border border-zinc-700">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer CTA */}
+      <section className="border-t border-zinc-800 py-12 text-center">
+        <p className="text-sm text-zinc-500 mb-4">Built for AI Unleashed · Cornell · March 2026</p>
+        <Link
+          href="/book"
+          className="px-6 py-3 bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          Try the agent →
+        </Link>
+      </section>
+
+    </div>
   );
 }

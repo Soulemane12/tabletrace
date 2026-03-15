@@ -39,6 +39,15 @@ app.get("/session/:runId", (req, res) => {
   res.json(session);
 });
 
+// Dashboard polls this to get all active sessions.
+app.get("/sessions", (req, res) => {
+  const all: Record<string, any> = {};
+  sessions.forEach((session, runId) => {
+    all[runId] = session;
+  });
+  res.json(all);
+});
+
 const server = attachTwilioRoutes(app);
 attachBridge(server);
 
