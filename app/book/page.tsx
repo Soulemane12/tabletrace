@@ -271,7 +271,7 @@ const EXAMPLE_PROMPTS = [
   {
     label: "Phone only",
     dot: "bg-sky-400",
-    text: "Book Mercer House for 4 people tonight at 8pm in SoHo",
+    text: "American dinner in SoHo for 4 people tonight at 8pm, budget $75 per person, no Italian, no Japanese",
   },
   {
     label: "Auto-confirmed",
@@ -281,12 +281,12 @@ const EXAMPLE_PROMPTS = [
   {
     label: "No match",
     dot: "bg-zinc-400",
-    text: "Book a French restaurant in SoHo for 4 people tonight at 8pm under $80",
+    text: "Dinner in SoHo for 4 people tonight at 8pm, no Italian, no Japanese, no American, budget $80",
   },
   {
     label: "Budget blocked",
     dot: "bg-orange-400",
-    text: "Book dinner in SoHo for 4 people tonight at 8pm, max $35 per person",
+    text: "Dinner in SoHo for 4 people tonight at 8pm, max $35 per person",
   },
   {
     label: "Needs clarification",
